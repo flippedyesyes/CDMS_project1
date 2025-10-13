@@ -66,7 +66,7 @@ bookstore
 
 ## 代码仓库
 
-从 [51275903030/CDMS.Xuan_ZHOU.2025Spring.DaSE: 当代数据管理系统第一次大作业 - CDMS.Xuan_ZHOU.2025Spring.DaSE - 水杉码园 (shuishan.net.cn)](https://gitea.shuishan.net.cn/51275903030/CDMS.Xuan_ZHOU.2025Spring.DaSE)获取代码，并以 bookstore 文件夹为根目录打开
+从 [10225501413/CDMS.Xuan_ZHOU.2025Autumn.DaSE: 当代数据管理系统第一次大作业 - CDMS.Xuan_ZHOU.2025Autumn.DaSE - 水杉码园 (shuishan.net.cn)](https://gitea.shuishan.net.cn/10225501413/CDMS.Xuan_ZHOU.2025Autumn.DaSE)获取代码，并以 bookstore 文件夹为根目录打开
 代码。 请大家从公共仓库 clone 到自己仓库（最后提交自己仓库的链接）下，然后继续作业。
 
 
@@ -100,7 +100,7 @@ Windows 执行测试参考视频：https://www.bilibili.com/video/BV1Lu4y1h7Pn/
 
 ## 要求
 
-2～3人一组，做好分工，完成下述内容：
+2人一组，做好分工，完成下述内容：
 
 1.bookstore 文件夹是该项目的 demo，采用 Flask 后端框架与 SQLite 数据库，实现了前60%功能以及对应的测试用例代码。
 **要求大家创建本地 MongoDB 数据库，将`bookstore/fe/data/book.db`中的内容以合适的形式存入本地数据库，后续所有数据读写都在本地的 MongoDB 数据库中进行** 
@@ -163,7 +163,7 @@ Windows 执行测试参考视频：https://www.bilibili.com/video/BV1Lu4y1h7Pn/
 
 - 提交 **报告(将仓库链接贴在报告最后)** pdf格式 到 **作业提交入口**
 - 命名规则：2025_ECNU_PJ1_第几组(.pdf)
-- 提交截止日期：**2025.4.3 23:59**
+- 提交截止日期：**2025.11.6 23:59**
 
 
 考核标准：
