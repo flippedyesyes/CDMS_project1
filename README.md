@@ -1,4 +1,4 @@
-# bookstore
+# bookstore学生版
 
 > 作业内容说明和要求文档为 README.md
 > 	作业源码目录为 bookstore
