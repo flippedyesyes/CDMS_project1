@@ -1,4 +1,6 @@
+import json
 from datetime import datetime
+from typing import Dict
 
 from pymongo.errors import DuplicateKeyError, PyMongoError
 
@@ -26,6 +28,40 @@ class Seller(db_conn.DBConn):
             if self.book_id_exist(store_id, book_id):
                 return error.error_exist_book_id(book_id)
 
+            search_pieces = []
+            text_fields: Dict[str, str] = {}
+            try:
+                book_obj = json.loads(book_json_str)
+            except (TypeError, ValueError):
+                book_obj = {}
+            if isinstance(book_obj, dict):
+                for key in (
+                    "title",
+                    "sub_title",
+                    "author",
+                    "publisher",
+                    "translator",
+                    "book_intro",
+                    "author_intro",
+                    "content",
+                ):
+                    value = book_obj.get(key)
+                    if isinstance(value, str):
+                        search_pieces.append(value)
+                        if key in {"title", "book_intro", "content"}:
+                            text_fields[key] = value
+                tags = book_obj.get("tags")
+                if isinstance(tags, list):
+                    search_pieces.extend(str(tag) for tag in tags if tag)
+                    text_fields["tags"] = tags
+                elif isinstance(tags, str):
+                    search_pieces.append(tags)
+                    text_fields["tags"] = tags
+                catalog = book_obj.get("catalog")
+                if isinstance(catalog, str):
+                    search_pieces.append(catalog)
+            search_text = " ".join(piece for piece in search_pieces if piece)
+
             doc = {
                 "doc_type": "inventory",
                 "store_id": store_id,
@@ -34,7 +70,9 @@ class Seller(db_conn.DBConn):
                 "stock_level": int(stock_level),
                 "created_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow(),
+                "search_text": search_text,
             }
+            doc.update(text_fields)
             self.collection.insert_one(doc)
             return 200, "ok"
         except DuplicateKeyError:

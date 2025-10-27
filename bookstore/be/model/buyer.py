@@ -1,8 +1,8 @@
 import json
 import logging
 import uuid
-from datetime import datetime
-from typing import List, Tuple
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple
 
 from pymongo.errors import PyMongoError
 
@@ -11,8 +11,11 @@ from be.model import error
 
 
 class Buyer(db_conn.DBConn):
+    pending_timeout = 1800
+
     def __init__(self):
         super().__init__()
+        self.pending_timeout = getattr(self, "pending_timeout", 1800)
 
     def __rollback_inventory(self, store_id: str, updates: List[Tuple[str, int]]):
         for book_id, count in updates:
@@ -28,6 +31,60 @@ class Buyer(db_conn.DBConn):
                 },
             )
 
+    def __restore_inventory(self, store_id: str, items: List[Dict]):
+        for item in items:
+            book_id = item.get("book_id")
+            count = int(item.get("count", 0))
+            if not book_id or count <= 0:
+                continue
+            self.collection.update_one(
+                {
+                    "doc_type": "inventory",
+                    "store_id": store_id,
+                    "book_id": book_id,
+                },
+                {
+                    "$inc": {"stock_level": count},
+                    "$set": {"updated_at": datetime.utcnow()},
+                },
+            )
+
+    def cancel_expired_orders(self) -> int:
+        cutoff = datetime.utcnow() - timedelta(seconds=self.pending_timeout)
+        expired = list(
+            self.collection.find(
+                {
+                    "doc_type": "order",
+                    "status": "pending",
+                    "created_at": {"$lt": cutoff},
+                },
+                {"_id": 0, "order_id": 1, "store_id": 1, "items": 1},
+            )
+        )
+        cancelled = 0
+        for order in expired:
+            order_id = order.get("order_id")
+            store_id = order.get("store_id")
+            if not order_id or not store_id:
+                continue
+            self.__restore_inventory(store_id, order.get("items", []))
+            result = self.collection.update_one(
+                {
+                    "doc_type": "order",
+                    "order_id": order_id,
+                    "status": "pending",
+                },
+                {
+                    "$set": {
+                        "status": "cancelled_timeout",
+                        "cancelled_at": datetime.utcnow(),
+                        "updated_at": datetime.utcnow(),
+                    }
+                },
+            )
+            if result.modified_count:
+                cancelled += 1
+        return cancelled
     def new_order(
         self, user_id: str, store_id: str, id_and_count: List[Tuple[str, int]]
     ) -> Tuple[int, str, str]:
@@ -104,6 +161,7 @@ class Buyer(db_conn.DBConn):
 
     def payment(self, user_id: str, password: str, order_id: str) -> Tuple[int, str]:
         try:
+            self.cancel_expired_orders()
             order = self.collection.find_one(
                 {"doc_type": "order", "order_id": order_id},
                 {"_id": 0},
@@ -250,3 +308,90 @@ class Buyer(db_conn.DBConn):
             return 528, "{}".format(str(e))
         except BaseException as e:
             return 530, "{}".format(str(e))
+
+    def cancel_order(
+        self, user_id: str, password: Optional[str], order_id: str
+    ) -> Tuple[int, str]:
+        try:
+            self.cancel_expired_orders()
+            order = self.collection.find_one(
+                {"doc_type": "order", "order_id": order_id},
+                {"_id": 0},
+            )
+            if order is None:
+                return error.error_invalid_order_id(order_id)
+            if order.get("user_id") != user_id:
+                return error.error_authorization_fail()
+            if order.get("status") != "pending":
+                return error.error_invalid_order_status(order_id)
+            if password is not None:
+                user_doc = self.collection.find_one(
+                    {"doc_type": "user", "user_id": user_id},
+                    {"password": 1, "_id": 0},
+                )
+                if user_doc is None or user_doc.get("password") != password:
+                    return error.error_authorization_fail()
+
+            self.__restore_inventory(order.get("store_id"), order.get("items", []))
+            result = self.collection.update_one(
+                {
+                    "doc_type": "order",
+                    "order_id": order_id,
+                    "status": "pending",
+                },
+                {
+                    "$set": {
+                        "status": "cancelled",
+                        "cancelled_at": datetime.utcnow(),
+                        "updated_at": datetime.utcnow(),
+                    }
+                },
+            )
+            if result.modified_count == 0:
+                return error.error_invalid_order_status(order_id)
+            return 200, "ok"
+        except PyMongoError as e:
+            return 528, "{}".format(str(e))
+        except BaseException as e:
+            return 530, "{}".format(str(e))
+
+    def list_orders(
+        self,
+        user_id: str,
+        status: Optional[str],
+        page: int,
+        page_size: int,
+    ) -> Tuple[int, str, Dict]:
+        try:
+            self.cancel_expired_orders()
+            if not self.user_id_exist(user_id):
+                return error.error_non_exist_user_id(user_id) + ({},)
+            safe_page = max(page or 1, 1)
+            safe_page_size = max(min(page_size or 20, 50), 1)
+            query: Dict = {"doc_type": "order", "user_id": user_id}
+            if status:
+                query["status"] = status
+            cursor = (
+                self.collection.find(
+                    query,
+                    {"_id": 0},
+                )
+                .sort([("updated_at", -1)])
+                .skip((safe_page - 1) * safe_page_size)
+                .limit(safe_page_size)
+            )
+            orders = []
+            for doc in cursor:
+                orders.append(doc)
+            total = self.collection.count_documents(query)
+            payload = {
+                "page": safe_page,
+                "page_size": safe_page_size,
+                "total": total,
+                "orders": orders,
+            }
+            return 200, "ok", payload
+        except PyMongoError as e:
+            return 528, "{}".format(str(e)), {}
+        except BaseException as e:
+            return 530, "{}".format(str(e)), {}

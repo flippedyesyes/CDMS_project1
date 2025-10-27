@@ -1,7 +1,8 @@
 import os
 from typing import Optional, Tuple
 
-from pymongo import ASCENDING, MongoClient
+from pymongo import ASCENDING, MongoClient, TEXT
+from pymongo.errors import OperationFailure
 from pymongo.collection import Collection
 
 _DEFAULT_URI = "mongodb://localhost:27017"
@@ -49,6 +50,18 @@ def _ensure_indexes(collection: Collection) -> None:
         unique=True,
         partialFilterExpression={"doc_type": "order"},
     )
+    indexes = collection.index_information()
+    if "idx_inventory_search_text" not in indexes:
+        try:
+            collection.create_index(
+                [("search_text", TEXT)],
+                name="idx_inventory_search_text",
+                default_language="none",
+                partialFilterExpression={"doc_type": "inventory"},
+            )
+        except OperationFailure:
+            # Some environments may already have a legacy text index; keep it.
+            pass
     _indexes_ready = True
 
 

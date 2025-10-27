@@ -49,3 +49,33 @@ def confirm_receipt():
     b = Buyer()
     code, message = b.confirm_receipt(user_id, order_id)
     return jsonify({"message": message}), code
+
+
+@bp_buyer.route("/cancel_order", methods=["POST"])
+def cancel_order():
+    user_id = request.json.get("user_id")
+    order_id = request.json.get("order_id")
+    password = request.json.get("password")
+    b = Buyer()
+    code, message = b.cancel_order(user_id, password, order_id)
+    return jsonify({"message": message}), code
+
+
+@bp_buyer.route("/orders", methods=["GET"])
+def list_orders():
+    user_id = request.args.get("user_id")
+    status = request.args.get("status")
+    try:
+        page = int(request.args.get("page", 1))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = int(request.args.get("page_size", 20))
+    except (TypeError, ValueError):
+        page_size = 20
+    b = Buyer()
+    code, message, payload = b.list_orders(user_id, status, page, page_size)
+    response = {"message": message}
+    if code == 200:
+        response.update(payload)
+    return jsonify(response), code
