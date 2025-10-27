@@ -95,3 +95,49 @@ class Seller(db_conn.DBConn):
             return 528, "{}".format(str(e))
         except BaseException as e:
             return 530, "{}".format(str(e))
+
+    def ship_order(self, user_id: str, store_id: str, order_id: str):
+        try:
+            if not self.user_id_exist(user_id):
+                return error.error_non_exist_user_id(user_id)
+            store_doc = self.collection.find_one(
+                {"doc_type": "store", "store_id": store_id},
+                {"user_id": 1, "_id": 0},
+            )
+            if store_doc is None:
+                return error.error_non_exist_store_id(store_id)
+            if store_doc.get("user_id") != user_id:
+                return error.error_authorization_fail()
+
+            order = self.collection.find_one(
+                {"doc_type": "order", "order_id": order_id},
+                {"store_id": 1, "status": 1, "_id": 0},
+            )
+            if order is None:
+                return error.error_invalid_order_id(order_id)
+            if order.get("store_id") != store_id:
+                return error.error_authorization_fail()
+            if order.get("status") != "paid":
+                return error.error_invalid_order_status(order_id)
+
+            result = self.collection.update_one(
+                {
+                    "doc_type": "order",
+                    "order_id": order_id,
+                    "status": "paid",
+                },
+                {
+                    "$set": {
+                        "status": "shipped",
+                        "shipment_time": datetime.utcnow(),
+                        "updated_at": datetime.utcnow(),
+                    }
+                },
+            )
+            if result.modified_count == 0:
+                return error.error_invalid_order_status(order_id)
+            return 200, "ok"
+        except PyMongoError as e:
+            return 528, "{}".format(str(e))
+        except BaseException as e:
+            return 530, "{}".format(str(e))

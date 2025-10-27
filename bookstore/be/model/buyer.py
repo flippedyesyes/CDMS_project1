@@ -87,6 +87,11 @@ class Buyer(db_conn.DBConn):
                 "store_id": store_id,
                 "items": order_items,
                 "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+                "status": "pending",
+                "payment_time": None,
+                "shipment_time": None,
+                "delivery_time": None,
             }
             self.collection.insert_one(order_doc)
             return 200, "ok", order_id
@@ -109,6 +114,8 @@ class Buyer(db_conn.DBConn):
             store_id = order.get("store_id")
             if buyer_id != user_id:
                 return error.error_authorization_fail()
+            if order.get("status") != "pending":
+                return error.error_invalid_order_status(order_id)
 
             buyer_doc = self.collection.find_one(
                 {"doc_type": "user", "user_id": buyer_id},
@@ -159,11 +166,22 @@ class Buyer(db_conn.DBConn):
             if result.modified_count == 0:
                 return error.error_non_exist_user_id(seller_id)
 
-            delete_result = self.collection.delete_one(
-                {"doc_type": "order", "order_id": order_id}
+            update_order = self.collection.update_one(
+                {
+                    "doc_type": "order",
+                    "order_id": order_id,
+                    "status": "pending",
+                },
+                {
+                    "$set": {
+                        "status": "paid",
+                        "payment_time": datetime.utcnow(),
+                        "updated_at": datetime.utcnow(),
+                    }
+                },
             )
-            if delete_result.deleted_count == 0:
-                return error.error_invalid_order_id(order_id)
+            if update_order.modified_count == 0:
+                return error.error_invalid_order_status(order_id)
 
             return 200, "ok"
         except PyMongoError as e:
@@ -192,6 +210,41 @@ class Buyer(db_conn.DBConn):
             if result.matched_count == 0:
                 return error.error_non_exist_user_id(user_id)
 
+            return 200, "ok"
+        except PyMongoError as e:
+            return 528, "{}".format(str(e))
+        except BaseException as e:
+            return 530, "{}".format(str(e))
+
+    def confirm_receipt(self, user_id: str, order_id: str) -> Tuple[int, str]:
+        try:
+            order = self.collection.find_one(
+                {"doc_type": "order", "order_id": order_id},
+                {"user_id": 1, "status": 1, "_id": 0},
+            )
+            if order is None:
+                return error.error_invalid_order_id(order_id)
+            if order.get("user_id") != user_id:
+                return error.error_authorization_fail()
+            if order.get("status") != "shipped":
+                return error.error_invalid_order_status(order_id)
+
+            result = self.collection.update_one(
+                {
+                    "doc_type": "order",
+                    "order_id": order_id,
+                    "status": "shipped",
+                },
+                {
+                    "$set": {
+                        "status": "delivered",
+                        "delivery_time": datetime.utcnow(),
+                        "updated_at": datetime.utcnow(),
+                    }
+                },
+            )
+            if result.modified_count == 0:
+                return error.error_invalid_order_status(order_id)
             return 200, "ok"
         except PyMongoError as e:
             return 528, "{}".format(str(e))
