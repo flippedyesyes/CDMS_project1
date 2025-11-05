@@ -17,19 +17,6 @@ class Buyer(db_conn.DBConn):
         super().__init__()
         self.pending_timeout = getattr(self, "pending_timeout", 1800)
 
-    def __rollback_inventory(self, store_id: str, updates: List[Tuple[str, int]]):
-        for book_id, count in updates:
-            self.collection.update_one(
-                {
-                    "doc_type": "inventory",
-                    "store_id": store_id,
-                    "book_id": book_id,
-                },
-                {
-                    "$inc": {"stock_level": count},
-                    "$set": {"updated_at": datetime.utcnow()},
-                },
-            )
 
     def __restore_inventory(self, store_id: str, items: List[Dict]):
         for item in items:
