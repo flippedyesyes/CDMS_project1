@@ -50,15 +50,27 @@ class Buyer(db_conn.DBConn):
             )
 
     def cancel_expired_orders(self) -> int:
-        cutoff = datetime.utcnow() - timedelta(seconds=self.pending_timeout)
+        now = datetime.utcnow()
+        cutoff = now - timedelta(seconds=self.pending_timeout)
         expired = list(
             self.collection.find(
                 {
                     "doc_type": "order",
                     "status": "pending",
-                    "created_at": {"$lt": cutoff},
+                    "$or": [
+                        {"expires_at": {"$lte": now}},
+                        {
+                            "expires_at": {"$exists": False},
+                            "created_at": {"$lt": cutoff},
+                        },
+                    ],
                 },
-                {"_id": 0, "order_id": 1, "store_id": 1, "items": 1},
+                {
+                    "_id": 0,
+                    "order_id": 1,
+                    "store_id": 1,
+                    "items": 1,
+                },
             )
         )
         cancelled = 0
@@ -79,6 +91,7 @@ class Buyer(db_conn.DBConn):
                         "status": "cancelled_timeout",
                         "cancelled_at": datetime.utcnow(),
                         "updated_at": datetime.utcnow(),
+                        "expires_at": order.get("expires_at"),
                     }
                 },
             )
@@ -137,18 +150,21 @@ class Buyer(db_conn.DBConn):
                     return error.error_stock_level_low(item["book_id"]) + (order_id,)
                 updated_inventory.append((item["book_id"], item["count"]))
 
+            now = datetime.utcnow()
+            expires_at = now + timedelta(seconds=self.pending_timeout)
             order_doc = {
                 "doc_type": "order",
                 "order_id": order_id,
                 "user_id": user_id,
                 "store_id": store_id,
                 "items": order_items,
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
+                "created_at": now,
+                "updated_at": now,
                 "status": "pending",
                 "payment_time": None,
                 "shipment_time": None,
                 "delivery_time": None,
+                "expires_at": expires_at,
             }
             self.collection.insert_one(order_doc)
             return 200, "ok", order_id

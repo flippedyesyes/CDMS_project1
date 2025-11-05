@@ -1,7 +1,7 @@
 import os
 from typing import Optional, Tuple
 
-from pymongo import ASCENDING, MongoClient, TEXT
+from pymongo import ASCENDING, DESCENDING, MongoClient, TEXT
 from pymongo.errors import OperationFailure
 from pymongo.collection import Collection
 
@@ -62,6 +62,23 @@ def _ensure_indexes(collection: Collection) -> None:
         except OperationFailure:
             # Some environments may already have a legacy text index; keep it.
             pass
+    if "idx_order_status_expire" not in indexes:
+        collection.create_index(
+            [("doc_type", ASCENDING), ("status", ASCENDING), ("expires_at", ASCENDING)],
+            name="idx_order_status_expire",
+            partialFilterExpression={"doc_type": "order"},
+        )
+    if "idx_order_user_status_updated" not in indexes:
+        collection.create_index(
+            [
+                ("doc_type", ASCENDING),
+                ("user_id", ASCENDING),
+                ("status", ASCENDING),
+                ("updated_at", DESCENDING),
+            ],
+            name="idx_order_user_status_updated",
+            partialFilterExpression={"doc_type": "order"},
+        )
     _indexes_ready = True
 
 

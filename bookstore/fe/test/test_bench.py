@@ -1,4 +1,4 @@
-from fe.bench.run import run_bench
+﻿from fe.bench.run import run_bench
 
 
 def test_bench():

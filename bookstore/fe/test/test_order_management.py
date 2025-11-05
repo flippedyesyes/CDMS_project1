@@ -100,3 +100,38 @@ class TestOrderManagement:
             assert second_order_id
         finally:
             BuyerModel.pending_timeout = original_timeout
+
+    def test_cancel_order_without_password(self):
+        order_id = self._create_order()
+        status, payload = self.buyer.cancel_order(order_id)
+        assert status == 200, payload
+
+    def test_cancel_order_wrong_user(self):
+        order_id = self._create_order()
+        intruder_id = f"intruder_{uuid.uuid4()}"
+        intruder = register_new_buyer(intruder_id, intruder_id)
+        status, payload = intruder.cancel_order(order_id, intruder.password)
+        assert status == 401
+
+    def test_list_orders_with_status_and_pagination(self):
+        order_ids = [self._create_order() for _ in range(3)]
+        collection = get_book_collection()
+        collection.update_one(
+            {"doc_type": "order", "order_id": order_ids[0]},
+            {"$set": {"status": "paid", "updated_at": datetime.utcnow()}},
+        )
+        collection.update_one(
+            {"doc_type": "order", "order_id": order_ids[1]},
+            {"$set": {"status": "cancelled", "updated_at": datetime.utcnow()}},
+        )
+        status, data = self.buyer.list_orders(status="paid")
+        assert status == 200
+        ids = {o["order_id"] for o in data.get("orders", [])}
+        assert order_ids[0] in ids
+        assert all(o["status"] == "paid" for o in data.get("orders", []))
+
+        status, data = self.buyer.list_orders(page=2, page_size=2)
+        assert status == 200
+        assert data.get("page") == 2
+        assert data.get("page_size") == 2
+        assert data.get("total") >= 3
